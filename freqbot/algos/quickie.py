@@ -9,7 +9,6 @@ class Quickie(BasicAlgorithm):
     def __init__(self, tick_type: str, tick_size, order_type: str = 'MARKET'):
         super(Quickie, self).__init__(tick_type, tick_size, order_type)
 
-
     def update_indicators(self, dataframe: DataFrame) -> DataFrame:
         macd = ta.MACD(dataframe)
         dataframe['macd'] = macd['macd']
@@ -30,24 +29,27 @@ class Quickie(BasicAlgorithm):
         return dataframe
 
     def buy_trend(self, dataframe: DataFrame) -> bool:
-        buy = dataframe.loc[
+        dataframe.loc[
             (
                     (dataframe['adx'] > 30) &
                     (dataframe['tema'] < dataframe['bb_middleband']) &
                     (dataframe['tema'] > dataframe['tema'].shift(1)) &
                     (dataframe['sma_200'] > dataframe['close'])
 
-            )].shape[0]
+            ),
+            'buy'] = 1
+        buy = dataframe.iloc[-1, dataframe.columns.get_loc("buy")]
         return True if buy else False
 
-
     def sell_trend(self, dataframe: DataFrame) -> bool:
-        sell = dataframe.loc[
+        dataframe.loc[
             (
                     (dataframe['adx'] > 70) &
                     (dataframe['tema'] > dataframe['bb_middleband']) &
                     (dataframe['tema'] < dataframe['tema'].shift(1))
-            )].shape[0]
+            ),
+            'sell'] = 1
+        sell = dataframe.iloc[-1, dataframe.columns.get_loc("sell")]
         return True if sell else False
 
     def action(self):
