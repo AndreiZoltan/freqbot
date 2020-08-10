@@ -1,0 +1,49 @@
+from freqbot.algos import BasicAlgorithm
+from pandas import DataFrame
+import pandas as pd
+import talib.abstract as ta
+import freqtrade.vendor.qtpylib.indicators as qtpylib
+
+
+class Quickie(BasicAlgorithm):
+    def __init__(self, tick_type: str, tick_size, order_type: str = 'MARKET'):
+        super(Quickie, self).__init__(tick_type, tick_size, order_type)
+
+    def update_indicators(self, dataframe: DataFrame) -> DataFrame:
+        macd = ta.MACD(dataframe)
+        dataframe['macd'] = macd['macd']
+        dataframe['macdsignal'] = macd['macdsignal']
+        dataframe['macdhist'] = macd['macdhist']
+
+        dataframe['tema'] = ta.TEMA(dataframe, timeperiod=9)
+        dataframe['sma_200'] = ta.SMA(dataframe, timeperiod=200)
+        dataframe['sma_50'] = ta.SMA(dataframe, timeperiod=200)
+
+        dataframe['adx'] = ta.ADX(dataframe)
+
+        bollinger = qtpylib.bollinger_bands(dataframe['close'], window=20, stds=2)
+        dataframe['bb_lowerband'] = bollinger['lower']
+        dataframe['bb_middleband'] = bollinger['mid']
+        dataframe['bb_upperband'] = bollinger['upper']
+
+        return dataframe
+
+    def buy_trend(self, dataframe: DataFrame) -> bool:
+        buy = dataframe.loc[
+            (
+                    (dataframe['adx'] > 30) &
+                    (dataframe['tema'] < dataframe['bb_middleband']) &
+                    (dataframe['tema'] > dataframe['tema'].shift(1)) &
+                    (dataframe['sma_200'] > dataframe['close'])
+
+            )].shape[0]
+        return True if buy else False
+
+    def sell_trend(self, dataframe: DataFrame) -> bool:
+        sell = dataframe.loc[
+            (
+                    (dataframe['adx'] > 70) &
+                    (dataframe['tema'] > dataframe['bb_middleband']) &
+                    (dataframe['tema'] < dataframe['tema'].shift(1))
+            )].shape[0]
+        return True if sell else False

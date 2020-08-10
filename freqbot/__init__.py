@@ -1,2 +1,3 @@
+__all__ = ['tools', 'algos']
 from freqbot.bot import Bot
-from freqbot.algorithms.basic_algorithm import BasicAlgorithm
+from freqbot.algos.basic_algorithm import BasicAlgorithm
