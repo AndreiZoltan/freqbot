@@ -16,6 +16,11 @@ class Bot:
         self.request = dict()
         self.order = dict()
 
+    @property
+    def is_trading(self):
+        self.order = self.client.get_order(symbol=self.order['symbol'], orderId=self.order['orderId'])
+        return False if self.order['status'] == 'FILLED' else True
+
     def process_message(self, message):
         message["id"] = message.pop("a")
         message["price"] = message.pop("p")
@@ -44,7 +49,9 @@ class Bot:
         state = getattr(self.data.bars, self.algorithm.tick_type)(self.algorithm.tick_size)
         if not state.empty:
             self.algorithm.get_state(state)
+            self.algorithm.is_trading = self.is_trading
             action = self.algorithm.action()
+            print(action)
             self.act(action)
             self.data = self.data.drop(self.data.loc[self.data["datetime"] <= state.index[-1]].index)
 
@@ -93,12 +100,13 @@ class Bot:
         self.request['side'] = action
         if self.algorithm.order_type == 'LIMIT':
             self.request['price'] = str(self.algorithm.price)
-            self.request['quantity'] = self.algorithm.price * self.stake_amount
+            self.request['quantity'] = self.stake_amount / self.algorithm.price
 
     def act(self, action):
         if action:
             self.make_request(action)
             self.order = self.client.create_order(** self.request)
+
 
     def trade(self, pair: str, days: int, override: bool = True, stake_amount: int = 10):
         """
