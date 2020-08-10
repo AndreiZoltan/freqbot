@@ -14,7 +14,6 @@ class Bot:
         self.data = pd.DataFrame()
         self.stake_amount = 0
         self.request = dict()
-<<<<<<< HEAD
         self.order = None
 
     @property
@@ -23,14 +22,6 @@ class Bot:
             self.order = self.client.get_order(symbol=self.order['symbol'], orderId=self.order['orderId'])
             return False if self.order['status'] == 'FILLED' else True
         return False
-=======
-        self.order = dict()
-
-    @property
-    def is_trading(self):
-        self.order = self.client.get_order(symbol=self.order['symbol'], orderId=self.order['orderId'])
-        return False if self.order['status'] == 'FILLED' else True
->>>>>>> e2c4885c02afb3ec32a002557fbcf2639271c444
 
     def process_message(self, message):
         message["id"] = message.pop("a")
@@ -67,10 +58,6 @@ class Bot:
     def get_initial_data(self, pair: str, days: int, override: bool):
         path = os.path.abspath(__file__)
         path = "/".join(path.split('/')[:-1]) + '/data/'
-<<<<<<< HEAD
-=======
-        print(pair, days, path)
->>>>>>> e2c4885c02afb3ec32a002557fbcf2639271c444
         self.data = fm.load_dataset(client=self.client,
                                     pair=pair,
                                     days=days,

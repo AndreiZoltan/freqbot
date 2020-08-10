@@ -1,23 +1,16 @@
 from freqbot.algos import BasicAlgorithm
 from pandas import DataFrame
 import pandas as pd
-<<<<<<< HEAD
 import talib.abstract as ta
 import freqtrade.vendor.qtpylib.indicators as qtpylib
-=======
-import talib as ta
->>>>>>> e2c4885c02afb3ec32a002557fbcf2639271c444
 
 
 class Quickie(BasicAlgorithm):
     def __init__(self, tick_type: str, tick_size, order_type: str = 'MARKET'):
         super(Quickie, self).__init__(tick_type, tick_size, order_type)
 
-<<<<<<< HEAD
+
     def update_indicators(self, dataframe: DataFrame) -> DataFrame:
-=======
-    def update_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
->>>>>>> e2c4885c02afb3ec32a002557fbcf2639271c444
         macd = ta.MACD(dataframe)
         dataframe['macd'] = macd['macd']
         dataframe['macdsignal'] = macd['macdsignal']
@@ -29,7 +22,6 @@ class Quickie(BasicAlgorithm):
 
         dataframe['adx'] = ta.ADX(dataframe)
 
-<<<<<<< HEAD
         bollinger = qtpylib.bollinger_bands(dataframe['close'], window=20, stds=2)
         dataframe['bb_lowerband'] = bollinger['lower']
         dataframe['bb_middleband'] = bollinger['mid']
@@ -38,11 +30,6 @@ class Quickie(BasicAlgorithm):
         return dataframe
 
     def buy_trend(self, dataframe: DataFrame) -> bool:
-=======
-        return dataframe
-
-    def buy_trend(self, dataframe: DataFrame, metadata: dict) -> bool:
->>>>>>> e2c4885c02afb3ec32a002557fbcf2639271c444
         buy = dataframe.loc[
             (
                     (dataframe['adx'] > 30) &
@@ -53,11 +40,8 @@ class Quickie(BasicAlgorithm):
             )].shape[0]
         return True if buy else False
 
-<<<<<<< HEAD
+
     def sell_trend(self, dataframe: DataFrame) -> bool:
-=======
-    def sell_trend(self, dataframe: DataFrame, metadata: dict) -> bool:
->>>>>>> e2c4885c02afb3ec32a002557fbcf2639271c444
         sell = dataframe.loc[
             (
                     (dataframe['adx'] > 70) &
