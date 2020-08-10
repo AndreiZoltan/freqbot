@@ -1,4 +1,3 @@
-# Bot
-[![CodeFactor](https://www.codefactor.io/repository/github/andrewsultan/freqbot/badge)](https://www.codefactor.io/repository/github/andrewsultan/freqbot)
+# bot
 
-Bot for trading on Binance
+[![CodeFactor](https://www.codefactor.io/repository/github/andrewsultan/freqbot/badge)](https://www.codefactor.io/repository/github/andrewsultan/freqbot)
