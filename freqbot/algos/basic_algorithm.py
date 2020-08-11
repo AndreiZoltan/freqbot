@@ -27,8 +27,6 @@ class BasicAlgorithm:
 
     def action(self):
         self.update_indicators(self.data)
-        if self.buy_trend(self.data) and not self.is_trading:
-            return 'BUY'
-        if self.sell_trend(self.data) and self.is_trading:
-            return 'SELL'
-        return None
+        if not self.is_trading:
+            return 'BUY' if self.buy_trend(self.data) else None
+        return 'SELL' if self.buy_trend(self.data) else None
