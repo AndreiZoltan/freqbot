@@ -19,15 +19,9 @@ class Bot:
         self.stake_amount = 0
         self.quantity = 0
         self.price = 0
+        self.is_trading = False
         self.lot_precision = 0
         self.price_precision = 0
-
-    @property
-    def is_trading(self):
-        if self.order:
-            self.order = self.client.get_order(symbol=self.order['symbol'], orderId=self.order['orderId'])
-            return False if self.order['status'] == 'FILLED' else True
-        return False
 
     def set_metadata(self, pair, stake_amount):
         def get_precision(string: str):
@@ -106,6 +100,13 @@ class Bot:
             messages = [self.process_message(message) for message in agg_trades]
             self.update(messages)
 
+    def handle_order(self, message):
+        if message['e'] == 'executionReport':
+            if message['S'] == 'BUY':
+                self.is_trading = True
+            elif message['S'] == 'SELL' and message['X'] == 'FILLED':
+                self.is_trading = False
+
     def handle_message(self, message):
         message = self.process_message(message)
         self.update(message)
@@ -151,7 +152,8 @@ class Bot:
         """
         self.set_metadata(pair, stake_amount)
         self.create_request(pair)
-        self.get_initial_data(pair=pair, days=days, override=override)
+        self.get_initial_data(pair, days, override)
+        self.bm.start_user_socket(self.handle_order)
         conn_key = self.bm.start_aggtrade_socket(pair, self.handle_message)
         self.bm.start()
 
