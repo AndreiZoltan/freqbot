@@ -8,6 +8,12 @@ import freqtrade.vendor.qtpylib.indicators as qtpylib
 class Quickie(BasicAlgorithm):
     def __init__(self, tick_type: str, tick_size, order_type: str = 'MARKET'):
         super(Quickie, self).__init__(tick_type, tick_size, order_type)
+        self.roi = {
+            "100": 0.01,
+            "30": 0.03,
+            "15": 0.06,
+            "10": 0.15,
+        }
 
     def update_indicators(self, dataframe: DataFrame) -> DataFrame:
         macd = ta.MACD(dataframe)
