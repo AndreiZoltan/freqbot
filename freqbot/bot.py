@@ -124,11 +124,7 @@ class Bot:
         if message['e'] == 'executionReport':
             if message['S'] == 'BUY':
                 self.is_trading = True
-                if message['o'] == 'MARKET':
-                    self.buy_price = self.logs.get_price(self.order)
             elif message['S'] == 'SELL' and message['X'] == 'FILLED':
-                if message['o'] == 'MARKET':
-                    self.sell_price = self.logs.get_price(self.order)
                 self.is_trading = False
 
     def handle_message(self, message):
