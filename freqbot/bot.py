@@ -4,7 +4,8 @@ from binance.client import Client
 from freqml import *
 import freqml as fm
 import pandas as pd
-import threading, queue
+import numpy as np
+import time
 import os
 
 
@@ -21,13 +22,15 @@ class Bot:
         self.stake_amount = None
         self.quantity = None
         self.price = None
+        self.buy_price = None
+        self.sell_price = None
         self.roi = dict()
         self.is_trading = False
         self.lot_precision = None
         self.price_precision = None
 
         # some helpers
-        self.q = queue.Queue()  # will be renamed
+        self.logs = fm.LogHandler
         self.roi_timer = None  # will be defined in set_metadata
         self.make_request = None  # will be defined in set_metadata
 
@@ -49,12 +52,13 @@ class Bot:
         self.make_request = self.make_limit_request if self.algorithm.order_type == 'LIMIT' else self.make_market_request
 
     def process_message(self, message):
-        message["id"] = message.pop("a")
         message["price"] = message.pop("p")
         self.price = float(message["price"])
+        self.is_roi()
+        message["id"] = message.pop("a")
         message["amount"] = message.pop("q")
         message["timestamp"] = message.pop("T")
-        message["datetime"] = pd.to_datetime(message["timestamp"],
+        message["datetime"] = pd.to_datetime(message["timestamp"],  # IS IT A JOKE OR WHAT ???
                                              unit='ms',
                                              utc=True).tz_convert('Europe/Chisinau')
         message["price"] = pd.to_numeric(message["price"])
@@ -78,6 +82,8 @@ class Bot:
             self.algorithm.is_trading = self.is_trading
             action = self.algorithm.action()
             print(action)
+            if action == 'BUY':
+                self.order['trade_time'] = time.perf_counter()
             self.act(action)
             self.data = self.data.drop(self.data.loc[self.data["datetime"] <= state.index[-1]].index)
 
@@ -108,14 +114,24 @@ class Bot:
             messages = [self.process_message(message) for message in agg_trades]
             self.update(messages)
 
-    def roi_timer(self):
-        pass
+    def is_roi(self):
+        diff = time.perf_counter() - self.order['trade_time']
+        keys = np.array(list(self.roi.keys()))
+        key = np.min(keys[keys - diff > 0])
+        profit_price = self.buy_price * (1 + self.roi[key])
+        if self.price > profit_price and self.is_trading:
+            self.make_market_request('SELL')
+            self.order = self.client.create_order(**self.request)
 
     def handle_order(self, message):
         if message['e'] == 'executionReport':
             if message['S'] == 'BUY':
                 self.is_trading = True
+                if message['o'] == 'MARKET':
+                    self.buy_price = self.logs.get_price(self.order)
             elif message['S'] == 'SELL' and message['X'] == 'FILLED':
+                if message['o'] == 'MARKET':
+                    self.sell_price = self.logs.get_price(self.order)
                 self.is_trading = False
 
     def handle_message(self, message):
@@ -137,8 +153,11 @@ class Bot:
         # or IOC with self.price - n * tick_size
         self.request['price'] = "{:0.0{}f}".format(self.algorithm.price, self.price_precision)
         if action == 'BUY':
+            self.buy_price = self.algorithm.price
             self.quantity = "{:0.0{}f}".format(self.stake_amount / self.algorithm.price, self.lot_precision)
             self.request['quantity'] = self.quantity
+        else:
+            self.sell_price = self.algorithm.price
 
     def make_market_request(self, action: str):
         self.request['side'] = action
@@ -150,7 +169,6 @@ class Bot:
         if action:
             self.make_request(action)
             self.order = self.client.create_order(** self.request)
-
 
     def trade(self, pair: str, days: int, override: bool = True, stake_amount: int = 10):
         """
