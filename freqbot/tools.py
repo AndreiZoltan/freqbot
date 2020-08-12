@@ -19,3 +19,4 @@ class RoiTimer(Thread):
             time.sleep(int(sleep_time) - int(old_sleep_time))
             old_sleep_time = sleep_time
             del self.roi_dict[sleep_time]
+        profit_price = self.start_price
