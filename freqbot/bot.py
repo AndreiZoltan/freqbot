@@ -1,8 +1,10 @@
+import freqbot as fb
 from binance.websockets import BinanceSocketManager
 from binance.client import Client
 from freqml import *
 import freqml as fm
 import pandas as pd
+import threading, queue
 import os
 
 
@@ -16,12 +18,18 @@ class Bot:
         self.order = None
 
         # some metadata
-        self.stake_amount = 0
-        self.quantity = 0
-        self.price = 0
+        self.stake_amount = None
+        self.quantity = None
+        self.price = None
+        self.roi = dict()
         self.is_trading = False
-        self.lot_precision = 0
-        self.price_precision = 0
+        self.lot_precision = None
+        self.price_precision = None
+
+        # some helpers
+        self.q = queue.Queue()  # will be renamed
+        self.roi_timer = None  # will be defined in set_metadata
+        self.make_request = None  # will be defined in set_metadata
 
     def set_metadata(self, pair, stake_amount):
         def get_precision(string: str):
@@ -99,6 +107,9 @@ class Bot:
             agg_trades = list(agg_trades)
             messages = [self.process_message(message) for message in agg_trades]
             self.update(messages)
+
+    def roi_timer(self):
+        pass
 
     def handle_order(self, message):
         if message['e'] == 'executionReport':
