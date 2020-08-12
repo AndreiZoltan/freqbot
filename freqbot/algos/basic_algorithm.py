@@ -10,6 +10,8 @@ class BasicAlgorithm:
         self.price = 0
         self.is_trading = False
         self.data = pd.DataFrame()
+        self.roi = dict()
+        self.stoploss = None
 
     def get_state(self, state):
         self.data = self.data.append(state, ignore_index=True)
