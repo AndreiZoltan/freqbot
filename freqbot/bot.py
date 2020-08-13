@@ -9,6 +9,73 @@ import time
 import os
 
 
+class OrderMetadata:
+    def __init__(self):
+        self.quantity = None
+        self.start_price = None
+        self.end_price = None
+        self.pair = None
+        self.start_time = None
+        self.end_time = None
+        self.roi = dict()
+        self.stoploss = None
+        self.sell_cause = None
+        # self.is_trading = False  # may be is unnecessarily
+
+    def set_roi_stoploss(self, roi: dict, stoploss: float):
+        self.roi = {float(key): value for key, value in roi.items()}
+        self.stoploss = stoploss
+
+    def set_time(self, action: str):
+        if action == 'BUY':
+            self.start_time = time.perf_counter()
+        else:
+            self.end_time = time.perf_counter()
+
+    def roi_stoploss_check(self, price: float):
+        diff = time.perf_counter() - self.start_time
+        keys = np.array(list(self.roi.keys()))
+        key = np.min(keys[keys - diff > 0])
+        profit_price = self.start_price * (1 + self.roi[key])
+        if price > profit_price:
+            self.set_time('SELL')
+            self.sell_cause = 'ROI'
+            return True
+        if price < self.start_price * (1 + self.stoploss):
+            self.set_time('SELL')
+            self.sell_cause = 'STOPLOSS'
+            return True
+        return False
+
+    @staticmethod
+    def get_price(order: dict):
+        cost = 0
+        quantity = 0
+        for fill in order['fills']:
+            cost += float(fill['price']) * float(fill['qty'])
+            quantity += float(fill['qty'])
+        return cost / quantity
+
+    def handle_order(self, order: dict):
+        self.pair = order['symbol']
+        if order['type'] == 'MARKET':
+            if order['side'] == 'BUY':
+                self.start_price = self.get_price(order)
+            else:
+                self.end_price = self.get_price(order)
+        if order['side'] == 'SELL':
+            self.sell_cause = 'SELL SIGNAL'
+
+    def flush(self):
+        self.quantity = None
+        self.start_price = None
+        self.end_price = None
+        self.pair = None
+        self.start_time = None
+        self.end_time = None
+        self.sell_cause = None
+
+
 class Bot:
     def __init__(self, key: str, secret: str, algorithm):
         self.client = Client(key, secret)
@@ -19,7 +86,7 @@ class Bot:
         self.order = None
 
         # some metadata
-        self.meta = fb.OrderMetadata()
+        self.meta = OrderMetadata()
         self.stake_amount = None
         self.price = None
         self.is_trading = False
@@ -27,10 +94,17 @@ class Bot:
         self.price_precision = None
 
         # some helpers
-        self.logs = fb.LogHandler()
-        self.make_request = None  # will be defined in set_metadata
+        self.data_handler = fb.DataHandler()
 
-    def set_metadata(self, pair, stake_amount):
+    def create_request(self, pair: str):
+        self.request['symbol'] = pair
+        self.request['type'] = self.algorithm.order_type
+        self.request['newOrderRespType'] = 'FULL'
+        self.request['recvWindow'] = 250  # why not?
+        if self.algorithm.order_type == 'LIMIT':  # for LIMIT type
+            self.request['timeInForce'] = 'GTC'
+
+    def set_metadata(self, pair: str, stake_amount: int):
         def get_precision(string: str):
             precision = 0
             for char in string:
@@ -45,8 +119,8 @@ class Bot:
         self.lot_precision = get_precision(step_size)
         tick_size = info['filters'][0]['tickSize']
         self.price_precision = get_precision(tick_size)
-        self.make_request = self.make_limit_request if self.algorithm.order_type == 'LIMIT' else self.make_market_request
         self.meta.set_roi_stoploss(self.algorithm.roi, self.algorithm.stoploss)
+        self.create_request(pair)
 
     def process_message(self, message):
         message["price"] = message.pop("p")
@@ -55,10 +129,7 @@ class Bot:
         # handling roi or stoploss case
         if self.is_trading:
             if self.meta.roi_stoploss_check(self.price):
-                self.make_market_request('SELL')
-                self.order = self.client.create_order(** self.request)
-                self.meta.handle_order(self.order)
-                self.logs.add(self.meta)
+                self.act('SELL', 'MARKET')
 
 
         message["id"] = message.pop("a")
@@ -83,19 +154,16 @@ class Bot:
         self.data = self.data.append(message, ignore_index=True)
         state = getattr(self.data.bars, self.algorithm.tick_type)(self.algorithm.tick_size)
         if not state.empty:
-            print(state)
             self.algorithm.get_state(state)
             self.algorithm.is_trading = self.is_trading
             action = self.algorithm.action()
-            print(action)
             if action:
-                self.meta.set_time(action)
-                self.act(action)
+                self.act(action, self.algorithm.order_type)
             self.data = self.data.drop(self.data.loc[self.data["datetime"] <= state.index[-1]].index)
 
-    def get_initial_data(self, pair: str, days: int, override: bool):
+    def get_historical_data(self, pair: str, days: int, override: bool):
         path = os.path.abspath(__file__)
-        path = "/".join(path.split('/')[:-1]) + '/data/'
+        path = "/".join(path.split('/')[:-2]) + '/data/'
         self.data = fm.load_dataset(client=self.client,
                                     pair=pair,
                                     days=days,
@@ -105,7 +173,6 @@ class Bot:
 
         state = getattr(self.data.bars, self.algorithm.tick_type)(self.algorithm.tick_size)
 
-        print("IT IS ME GET INITIAL STATE ", state.shape)
         self.algorithm.get_state(state)
 
         last_id = self.data.iloc[-1, 0]
@@ -123,21 +190,17 @@ class Bot:
     def handle_order(self, message):
         if message['e'] == 'executionReport':
             if message['S'] == 'BUY':
+                self.meta.set_time('BUY')
                 self.is_trading = True
             elif message['S'] == 'SELL' and message['X'] == 'FILLED':
+                self.meta.set_time('SELL')
+                self.data_handler.add(self.meta)
+                self.meta.flush()
                 self.is_trading = False
 
     def handle_message(self, message):
         message = self.process_message(message)
         self.update(message)
-
-    def create_request(self, pair: str):
-        self.request['symbol'] = pair
-        self.request['type'] = self.algorithm.order_type
-        self.request['newOrderRespType'] = 'FULL'
-        self.request['recvWindow'] = 250  # why not?
-        if self.algorithm.order_type == 'LIMIT':  # for LIMIT type
-            self.request['timeInForce'] = 'GTC'
 
     def make_limit_request(self, action: str):
         self.request['side'] = action
@@ -158,11 +221,13 @@ class Bot:
             self.meta.quantity = "{:0.0{}f}".format(self.stake_amount / self.price, self.lot_precision)
             self.request['quantity'] = self.meta.quantity
 
-    def act(self, action):
-        self.make_request(action)
+    def act(self, action: str, type_order: str):
+        if type_order == 'MARKET':
+            self.make_market_request(action)
+        else:
+            self.make_limit_request(action)
         self.order = self.client.create_order(** self.request)
         self.meta.handle_order(self.order)
-        self.logs.add(self.meta)
 
     def trade(self, pair: str, days: int, override: bool = True, stake_amount: int = 10):
         """
@@ -174,8 +239,7 @@ class Bot:
         :return: trade function has no return but it saves logs
         """
         self.set_metadata(pair, stake_amount)
-        self.create_request(pair)
-        self.get_initial_data(pair, days, override)
+        self.get_historical_data(pair, days, override)
         self.bm.start_user_socket(self.handle_order)
         conn_key = self.bm.start_aggtrade_socket(pair, self.handle_message)
         self.bm.start()
