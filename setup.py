@@ -11,7 +11,7 @@ setuptools.setup(
     description="A package for crypto bot",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/AndrewSultan/freqml",
+    url="https://github.com/AndrewSultan/freqbot",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

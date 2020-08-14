@@ -2,10 +2,12 @@ README.md
 setup.py
 freqbot/__init__.py
 freqbot/bot.py
+freqbot/database.py
 freqbot/tools.py
 freqbot.egg-info/PKG-INFO
 freqbot.egg-info/SOURCES.txt
 freqbot.egg-info/dependency_links.txt
 freqbot.egg-info/top_level.txt
-freqbot/algorithms/__init__.py
-freqbot/algorithms/basic_algorithm.py
+freqbot/algos/__init__.py
+freqbot/algos/basic_algorithm.py
+freqbot/algos/quickie.py

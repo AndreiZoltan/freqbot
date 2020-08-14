@@ -13,7 +13,7 @@ class BasicAlgorithm:
         self.roi = dict()
         self.stoploss = None
 
-    def get_state(self, state):
+    def set_state(self, state):
         self.data = self.data.append(state, ignore_index=True)
         print("IT IS DATA SHAPE ", self.data.shape)
         print("IT IS APPENDED SHAPE ", state.shape)
