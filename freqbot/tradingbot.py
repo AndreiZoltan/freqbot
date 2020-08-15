@@ -1,4 +1,4 @@
-import freqbot as fb
+from freqbot.database import DataHandler
 from freqbot.algos import BasicAlgorithm
 from binance.websockets import BinanceSocketManager
 from binance.client import Client
@@ -18,7 +18,7 @@ class OrderMetadata:
         self.pair = None
         self.start_time = None
         self.end_time = None
-        self.sell_cause = None
+        self.sell_reason = None
         self.fee = None
         self.order_type = None
         self.limit_type = None
@@ -46,7 +46,7 @@ class OrderMetadata:
         return self.quantity
 
     def set_sell_cause(self, sell_cause: str):
-        self.sell_cause = sell_cause
+        self.sell_reason = sell_cause
 
     @staticmethod
     def get_price(order: dict):
@@ -102,7 +102,7 @@ class OrderMetadata:
         self.pair = None
         self.start_time = None
         self.end_time = None
-        self.sell_cause = None
+        self.sell_reason = None
         self.fee = None
         self.order_type = None
         self.limit_type = None
@@ -238,7 +238,7 @@ class TradingBot:
             if message['S'] == 'BUY':
                 self.is_trading = True
             elif message['S'] == 'SELL' and message['X'] == 'FILLED':
-                self.data_handler.update(self.meta)
+                self.data_handler.update(vars(self.meta))
                 self.meta.flush()
                 self.is_trading = False
 
@@ -292,7 +292,7 @@ class TradingBot:
         :return: trade function has no return but it saves logs
         """
         self.set_metadata(pair, stake_amount)
-        self.data_handler = fb.DataHandler('trade')
+        self.data_handler = DataHandler('trade')
         self.get_historical_data(pair, days, override)
         self.bm.start_user_socket(self.handle_order)
         conn_key = self.bm.start_aggtrade_socket(pair, self.handle_message)

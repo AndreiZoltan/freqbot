@@ -1,106 +1,191 @@
-import sqlite3 as sl
-import freqbot as fb
-import pandas as pd
+import sqlite3
 import os
+from numpy import heaviside, maximum
+from typing import Union, NoReturn
+import time
+
+from freqbot.tools import r
+import freqbot as fb
 
 
 class DataHandler:
     def __init__(self, filename):
-        self.db = None
-        self.connect(filename)
+        self.connection = self.connect(filename)
+        self.connection.row_factory = sqlite3.Row
+        self.cursor = self.connection.cursor()
         self.create_tables()
 
-    def connect(self, filename: str):
+    @staticmethod
+    def connect(filename: str) -> sqlite3.Connection:
         path = os.path.abspath(__file__)
         path = "/".join(path.split('/')[:-2]) + '/databases/'
-        self.db = sl.connect(path + filename + '.db')
+        return sqlite3.connect(path + filename + '.db')
 
-    def create_tables(self):
-        with self.db:
-            self.db.execute("""
+    def create_tables(self) -> NoReturn:
+        with self.connection:
+            self.connection.execute("""
                 CREATE TABLE IF NOT EXISTS MAIN (
                     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                     start_time DATETIME NOT NULL,
                     duration INTEGER NOT NULL,
-                    start_price FLOAT NOT NULL,
-                    end_price FLOAT NOT NULL,
-                    ratio FLOAT NOT NULL,
+                    start_price REAL NOT NULL,
+                    end_price REAL NOT NULL,
+                    ratio REAL NOT NULL,
                     sell_reason VARCHAR NOT NULL,
-                    income FLOAT NOT NULL,
-                    fee FLOAT NOT NULL,
+                    income REAL NOT NULL,
+                    fee REAL NOT NULL,
                     pair VARCHAR NOT NULL,
                     algorithm VARCHAR NOT NULL,
-                    stake_amount FLOAT NOT NULL,
+                    stake_amount REAL NOT NULL,
                     order_type VARCHAR NOT NULL,
                     limit_type VARCHAR
                 );
             """)
-            self.db.execute("""
+            self.connection.execute("""
                 CREATE TABLE IF NOT EXISTS PAIR (
                     pair VARCHAR NOT NULL PRIMARY KEY,
                     num_loss INTEGER NOT NULL,
                     num_profit INTEGER NOT NULL,
                     num_total INTEGER NOT NULL,
-                    ratio_num FLOAT,
-                    loss FLOAT NOT NULL,
-                    profit FLOAT NOT NULL,
-                    total FLOAT NOT NULL,
-                    average_duration FLOAT
+                    ratio_num REAL,
+                    loss REAL NOT NULL,
+                    profit REAL NOT NULL,
+                    ratio REAL NOT NULL,
+                    total REAL NOT NULL,
+                    av_duration REAL
                 );
             """)
-            self.db.execute("""
+            self.connection.execute("""
                 CREATE TABLE IF NOT EXISTS ALGO (
                     algo VARCHAR NOT NULL PRIMARY KEY,
                     num_loss INTEGER NOT NULL,
                     num_profit INTEGER NOT NULL,
                     num_total INTEGER NOT NULL,
-                    ratio_num FLOAT,
-                    loss FLOAT NOT NULL,
-                    profit FLOAT NOT NULL,
-                    total FLOAT NOT NULL,
-                    average_duration FLOAT
+                    ratio_num REAL,
+                    loss REAL NOT NULL,
+                    profit REAL NOT NULL,
+                    ratio REAL NOT NULL,
+                    total REAL NOT NULL,
+                    av_duration REAL
                 );
             """)
 
-    @staticmethod
-    def get_income(metadata: dict):
-        income = (metadata['start_price'] - metadata['end_price']) * metadata['quantity']
+    def get_income(self, metadata: dict) -> float:
+        income = (metadata['end_price'] - metadata['start_price']) * metadata['quantity']
         income -= metadata['fee']
-        return round(income, 2)
+        return income
+
+    def get_duration(self,  metadata) -> float:
+        return (metadata['end_time'] - metadata['start_time']) / 60
+
+    def get_av_duration(self, old_data, new_data, num_total) -> float:
+        return ((num_total - 1) * old_data['av_duration'] + self.get_duration(new_data)) / num_total
+
+    def get_pair_algo_line(self, key: str, table) -> Union[sqlite3.Row, bool]:
+        assert table in ['PAIR', 'ALGO']
+        if table == 'PAIR':
+            self.cursor.execute('SELECT * FROM PAIR WHERE pair=?', (key, ))
+        else:
+            self.cursor.execute('SELECT * FROM ALGO WHERE algo=?', (key, ))
+        rows = self.cursor.fetchall()
+        assert len(rows) == 1 or len(rows) == 0
+        if len(rows) == 1:
+            return rows[0]
+        else:
+            return False
 
     def get_main_data(self, metadata: dict) -> tuple:
         main_data = list()
         main_data.append(metadata['start_time'])                                         # start_time
-        main_data.append((metadata['end_time'] - metadata['start_time']) / 60)           # duration
+        main_data.append(r(self.get_duration(metadata)))                                 # duration
         main_data.append(metadata['start_price'])                                        # start_price
         main_data.append(metadata['end_price'])                                          # end_price
-        main_data.append(round(metadata['end_price'] / metadata['start_price'], 3))      # ratio
+        main_data.append(r(metadata['end_price'] / metadata['start_price']))             # ratio
         main_data.append(metadata['sell_reason'])                                        # sell_reason
         main_data.append(self.get_income(metadata))                                      # income
         main_data.append(metadata['fee'])                                                # fee
         main_data.append(metadata['pair'])                                               # pair
         main_data.append(metadata['algorithm_name'])                                     # algorithm
-        main_data.append(round(metadata['start_price'] * metadata['quantity'], 2))       # stake_amount
+        main_data.append(r(metadata['start_price'] * metadata['quantity']))              # stake_amount
         main_data.append(metadata['order_type'])                                         # order type
         main_data.append(metadata['limit_type'])                                         # limit_type
         return tuple(main_data)
 
-    def update_main(self, metadata):
+    def get_pair_algo_data(self, metadata: dict, table: str) -> tuple:
+        assert table in ['ALGO', 'PAIR']
+        new_data = list()
+        if table == 'ALGO':
+            old_data = self.get_pair_algo_line(metadata['algorithm_name'], table)           # index
+            new_data.append(metadata['algorithm_name'])
+        else:
+            old_data = self.get_pair_algo_line(metadata['pair'], table)                     # index
+            new_data.append(metadata['pair'])
+        income = self.get_income(metadata)
+        print(old_data)
+        if not old_data:
+            print('WRONG WAY')
+            num_loss = heaviside(-income, 0)
+            new_data.append(num_loss)                                                       # num_loss
+            num_profit = heaviside(income, 1)
+            new_data.append(num_profit)                                                     # num_profit
+            new_data.append(num_profit + num_loss)                                          # num_total
+            ratio_n = r(num_profit / (num_loss + num_profit))
+            new_data.append(ratio_n)                                                        # ratio_n
+            loss = maximum(-income, 0)
+            new_data.append(loss)                                                           # loss
+            profit = maximum(income, 0)
+            new_data.append(r(profit))                                                      # profit
+            ratio = r(profit / (loss + profit))
+            new_data.append(ratio)                                                          # ratio
+            new_data.append(r(profit - loss))                                               # total
+            new_data.append(r(self.get_duration(metadata)))                                 # av_duration
+        else:
+            print(old_data['num_loss'], heaviside(-income, 0))
+            num_loss = old_data['num_loss'] + heaviside(-income, 0)
+            new_data.append(num_loss)                                                       # num_loss
+            num_profit = old_data['num_profit'] + heaviside(income, 1)
+            new_data.append(num_profit)                                                     # num_profit
+            num_total = num_loss + num_profit
+            new_data.append(num_total)                                                      # num_total
+            ratio_n = r(num_profit / (num_loss + num_profit))
+            new_data.append(ratio_n)                                                        # ratio_n
+            loss = old_data['loss'] + maximum(-income, 0)
+            new_data.append(loss)                                                           # loss
+            profit = old_data['profit'] + maximum(income, 0)
+            new_data.append(profit)                                                         # profit
+            ratio = r(profit / (loss + profit))
+            new_data.append(ratio)                                                          # ratio
+            new_data.append(profit - loss)                                                  # total
+            av_duration = self.get_av_duration(old_data, metadata, num_total)
+            new_data.append(r(av_duration))                                                 # av_duration
+        return tuple(new_data)
+
+    def update_main(self, metadata: dict) -> NoReturn:
         sql = 'INSERT INTO MAIN \
         (start_time, duration, start_price, end_price, ratio, sell_reason, income, fee, pair,\
          algorithm, stake_amount, order_type, limit_type) \
          values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         data = [self.get_main_data(metadata)]
-        with self.db:
-            self.db.executemany(sql, data)
+        with self.connection:
+            self.connection.executemany(sql, data)
 
-    def update_pair(self):
-        pass
+    def update_pair(self, metadata: dict) -> NoReturn:
+        sql = 'REPLACE INTO PAIR \
+        (pair, num_loss, num_profit, num_total, ratio_num, loss, profit, ratio, total, av_duration) ' \
+        'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);'
+        data = [self.get_pair_algo_data(metadata, 'PAIR')]
+        with self.connection:
+            self.connection.executemany(sql, data)
 
-    def update_algo(self):
-        pass
+    def update_algo(self, metadata: dict) -> NoReturn:
+        sql = 'REPLACE INTO ALGO \
+        (algo, num_loss, num_profit, num_total, ratio_num, loss, profit, ratio, total, av_duration) ' \
+        'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);'
+        data = [self.get_pair_algo_data(metadata, 'ALGO')]
+        with self.connection:
+            self.connection.executemany(sql, data)
 
-    def update(self, metadata: dict):
+    def update(self, metadata: dict) -> NoReturn:
         """
         update is used to updated 3 tables (MAIN, PAIR, ALGO)
         :param metadata: is dict that consist of following keys: quantity, start_price, end_price, pair, start_time,
@@ -111,55 +196,28 @@ class DataHandler:
         self.update_pair(metadata)
         self.update_algo(metadata)
 
-    def drop_table(self):
-        with self.db:
-            self.db.execute("""
-            DROP TABLE IF EXISTS SKILL""")
-#
-#
-# class DataBase:
-#     def __init__(self):
-#         self.backtest = DataHandler("backtest")
-#         self.dry_trade = DataHandler("dry_trade")
-#         self.trade = DataHandler("trade")
-#
-#     def drop_table(self):
-#         with self.trade:
-#             self.trade.execute("""
-#             DROP TABLE IF EXISTS USER""")
-#
-    def insert(self):
-        sql = 'INSERT INTO USER (name, age) values(?, ?)'
-        data = [
-            ('Alice', 21),
-            ('Bob', 22),
-            ('Chris', 23)
-        ]
-        with self.trade:
-            self.trade.executemany(sql, data)
-#
-#     def query(self):
-#         with self.trade:
-#             data = self.trade.execute("SELECT * FROM USER WHERE age <= 22")
-#             for row in data:
-#                 print(row)
-#
-#     def insert_pandas(self):
-#         df_skill = pd.DataFrame({
-#             'user_id': [1, 1, 2, 2, 3, 3, 3],
-#             'skill': ['Network Security', 'Algorithm Development', 'Network Security', 'Java', 'Python', 'Data Science',
-#                       'Machine Learning']
-#         })
-#         df_skill.to_sql('SKILL', self.trade)
-#
-#     def add(self, order):
-#         pass
-#         # self.order_list.append(order)
-
+    def drop_all_tables(self) -> NoReturn:
+        with self.connection:
+            self.connection.execute("""
+            DROP TABLE IF EXISTS MAIN""")
+            self.connection.execute("""
+            DROP TABLE IF EXISTS PAIR""")
+            self.connection.execute("""
+            DROP TABLE IF EXISTS ALGO""")
 
 if __name__ == '__main__':
-    #dh = DataHandler('trade')
-    #dh.drop_table()
+    dh = DataHandler('trade')
+    # dh.drop_table()
 
-    order = fb.OrderMetadata()
-    print(dir(order))
+    # order = fb.OrderMetadata()
+    order = {'quantity': 300, 'start_price': 8.5, 'end_price': 9,
+             'pair': "LOLKUK", 'start_time': 1234, 'end_time': 2100,
+             'sell_reason': 'SELL SIGNAL', 'fee': 0.1, 'order_type': "MARKET",
+             'limit_type': None, 'algorithm_name': "MUMBA_v4"}
+    # print(vars(order))
+
+    print('START')
+    print(time.ctime())
+    # dh.drop_table()
+    dh.update(order)
+    print(time.ctime())
