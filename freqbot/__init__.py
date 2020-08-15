@@ -1,4 +1,4 @@
-__all__ = ['Bot']
-from freqbot.bot import Bot
+__all__ = ['TradingBot']
+from freqbot.tradingbot import TradingBot
 from freqbot.database import DataHandler
 from freqbot.algos.basic_algorithm import BasicAlgorithm

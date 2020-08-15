@@ -57,11 +57,3 @@ class Quickie(BasicAlgorithm):
             'sell'] = 1
         sell = dataframe.iloc[-1, dataframe.columns.get_loc("sell")]
         return True if sell else False
-
-    def action(self):
-        self.update_indicators(self.data)
-        if self.buy_trend(self.data) and not self.is_trading:
-            return 'BUY'
-        if self.sell_trend(self.data) and self.is_trading:
-            return 'SELL'
-        return None

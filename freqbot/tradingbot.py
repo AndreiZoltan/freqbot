@@ -1,4 +1,5 @@
 import freqbot as fb
+from freqbot.algos import BasicAlgorithm
 from binance.websockets import BinanceSocketManager
 from binance.client import Client
 from freqml import *
@@ -17,8 +18,6 @@ class OrderMetadata:
         self.pair = None
         self.start_time = None
         self.end_time = None
-        self.roi = dict()
-        self.stoploss = None
         self.sell_cause = None
 
     def set_time(self, action: str):
@@ -69,8 +68,8 @@ class OrderMetadata:
         self.sell_cause = None
 
 
-class Bot:
-    def __init__(self, key: str, secret: str, algorithm):
+class TradingBot:
+    def __init__(self, key: str, secret: str, algorithm: BasicAlgorithm):
         self.client = Client(key, secret)
         self.bm = BinanceSocketManager(self.client)
         self.algorithm = algorithm
@@ -159,8 +158,7 @@ class Bot:
         state = getattr(self.data.bars, self.algorithm.tick_type)(self.algorithm.tick_size)
         if not state.empty:
             self.algorithm.set_state(state)
-            self.algorithm.is_trading = self.is_trading
-            action = self.algorithm.action()
+            action = self.algorithm.action(self.is_trading)
             if action:
                 if action == 'SELL':
                     self.meta.set_sell_cause('SELL SIGNAL')
@@ -179,7 +177,7 @@ class Bot:
 
         state = getattr(self.data.bars, self.algorithm.tick_type)(self.algorithm.tick_size)
 
-        self.algorithm.get_state(state)
+        self.algorithm.set_state(state)
 
         last_id = self.data.iloc[-1, 0]
         self.data = self.data.drop(self.data.loc[self.data["datetime"] <= state.index[-1]].index)
@@ -200,7 +198,7 @@ class Bot:
                 self.is_trading = True
             elif message['S'] == 'SELL' and message['X'] == 'FILLED':
                 self.meta.set_time('SELL')
-                self.data_handler.add(self.meta)
+                self.data_handler.update(self.meta)
                 self.meta.flush()
                 self.is_trading = False
 
@@ -235,6 +233,8 @@ class Bot:
             self.request['quantity'] = self.meta.get_quantity()
 
     def act(self, action: str, type_order: str):
+        assert type_order in ['MARKET', 'LIMIT']
+        assert action in ['BUY', 'SELL']
         if type_order == 'MARKET':
             self.make_market_request(action)
         else:

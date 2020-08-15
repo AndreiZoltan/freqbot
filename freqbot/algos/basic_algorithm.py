@@ -8,7 +8,6 @@ class BasicAlgorithm:
         self.tick_size = tick_size
         self.order_type = order_type
         self.price = 0
-        self.is_trading = False
         self.data = pd.DataFrame()
         self.roi = dict()
         self.stoploss = None
@@ -27,8 +26,8 @@ class BasicAlgorithm:
     def sell_trend(self, dataframe: DataFrame) -> bool:
         pass
 
-    def action(self):
+    def action(self, is_trading: bool):
         self.update_indicators(self.data)
-        if not self.is_trading:
+        if not is_trading:
             return 'BUY' if self.buy_trend(self.data) else None
         return 'SELL' if self.buy_trend(self.data) else None

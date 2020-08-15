@@ -63,8 +63,27 @@ class DataHandler:
                 );
             """)
 
-    def add2main(self):
-        pass
+
+    def get_main_data(self, metadata: dict):
+        main_data = list()
+        main_data.append(metadata['start_time'])                                         # start_time
+        main_data.append((metadata['end_time'] - metadata['start_time']) / 60)           # duration
+        main_data.append(metadata['start_price'])                                        # start_price
+        main_data.append(metadata['end_price'])                                          # end_price
+        main_data.append(metadata['end_price'] / metadata['start_price'])                # ratio
+        main_data.append(metadata['sell_reason'])                                        # sell_reason
+        main_data.append() # TBD
+
+
+    def update_main(self, metadata):
+        sql = 'INSERT INTO MAIN \
+        (start_time, duration, start_price, end_price, ratio, sell_reason, income, fee, pair,\
+         algorithm, stake_amount, order_type, limit_type) \
+         values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        data = [
+            (metadata['start_time'], self.get_duration(metadata)), metadata['start_price'], metadata['end_price'],
+            metadata
+        ]
 
     def update_pair(self):
         pass
@@ -72,11 +91,16 @@ class DataHandler:
     def update_algo(self):
         pass
 
-    def update(self, metadata):
-        pass
-        # self.add2main(metadata)
-        # self.update_pair(metadata)
-        # self.update_algo(metadata)
+    def update(self, metadata: dict):
+        """
+        update is used to updated 3 tables (MAIN, PAIR, ALGO)
+        :param metadata: is dict that consist of following keys: quantity, start_price, end_price, pair, start_time,
+        end_time, sell_cause
+        :return: trade function has no return but it updates tables
+        """
+        self.update_main(metadata)
+        self.update_pair(metadata)
+        self.update_algo(metadata)
 
     def drop_table(self):
         with self.db:
