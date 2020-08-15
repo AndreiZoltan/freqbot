@@ -72,7 +72,8 @@ class DataHandler:
         main_data.append(metadata['end_price'])                                          # end_price
         main_data.append(metadata['end_price'] / metadata['start_price'])                # ratio
         main_data.append(metadata['sell_reason'])                                        # sell_reason
-        main_data.append() # TBD
+        main_data.append()
+        main_data.append(metadata['fee'])                                                # fee
 
 
     def update_main(self, metadata):

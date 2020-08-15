@@ -19,6 +19,7 @@ class OrderMetadata:
         self.start_time = None
         self.end_time = None
         self.sell_cause = None
+        self.fee = None
 
     def set_time(self, action: str):
         if action == 'BUY' and not self.start_time:
@@ -50,13 +51,36 @@ class OrderMetadata:
             quantity += float(fill['qty'])
         return cost / quantity
 
+    @staticmethod
+    def get_fee(order: dict):
+        fee = 0
+        for fill in order['fills']:
+            assert fill['commissionAsset'] == 'USDT'
+            fee += float(fill['commission'])
+        return fee
+
     def add_order(self, order: dict):
+        """
+        :param order: order from create_order
+        :return:
+        """
         self.pair = order['symbol']
         if order['type'] == 'MARKET':
             if order['side'] == 'BUY':
                 self.start_price = self.get_price(order)
+                # self.fee = self.get_fee(order)
             else:
                 self.end_price = self.get_price(order)
+                # self.fee += self.get_fee(order)
+
+    def add_socket_order(self, order: dict):
+        """
+        :param order: order from websocket
+        :return:
+        """
+        if order['x'] == 'TRADE':  # Part of the order or all of the order's quantity has filled
+            assert order['N'] == 'USDT'
+            self.fee += float(order['n'])
 
     def flush(self):
         self.quantity = None
@@ -66,6 +90,7 @@ class OrderMetadata:
         self.start_time = None
         self.end_time = None
         self.sell_cause = None
+        self.fee = None
 
 
 class TradingBot:
@@ -193,6 +218,7 @@ class TradingBot:
 
     def handle_order(self, message):
         if message['e'] == 'executionReport':
+            self.meta.add_socket_order(message)
             if message['S'] == 'BUY':
                 self.meta.set_time('BUY')  # why set time is here?
                 self.is_trading = True
