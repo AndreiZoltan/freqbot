@@ -13,8 +13,7 @@ class DataHandler:
     def connect(self, filename: str):
         path = os.path.abspath(__file__)
         path = "/".join(path.split('/')[:-2]) + '/databases/'
-        self.path = path
-        self.db = sl.connect(self.path + filename + '.db')
+        self.db = sl.connect(path + filename + '.db')
 
     def create_tables(self):
         with self.db:
@@ -63,28 +62,37 @@ class DataHandler:
                 );
             """)
 
+    @staticmethod
+    def get_income(metadata: dict):
+        income = (metadata['start_price'] - metadata['end_price']) * metadata['quantity']
+        income -= metadata['fee']
+        return round(income, 2)
 
-    def get_main_data(self, metadata: dict):
+    def get_main_data(self, metadata: dict) -> tuple:
         main_data = list()
         main_data.append(metadata['start_time'])                                         # start_time
         main_data.append((metadata['end_time'] - metadata['start_time']) / 60)           # duration
         main_data.append(metadata['start_price'])                                        # start_price
         main_data.append(metadata['end_price'])                                          # end_price
-        main_data.append(metadata['end_price'] / metadata['start_price'])                # ratio
+        main_data.append(round(metadata['end_price'] / metadata['start_price'], 3))      # ratio
         main_data.append(metadata['sell_reason'])                                        # sell_reason
-        main_data.append()
+        main_data.append(self.get_income(metadata))                                      # income
         main_data.append(metadata['fee'])                                                # fee
-
+        main_data.append(metadata['pair'])                                               # pair
+        main_data.append(metadata['algorithm_name'])                                     # algorithm
+        main_data.append(round(metadata['start_price'] * metadata['quantity'], 2))       # stake_amount
+        main_data.append(metadata['order_type'])                                         # order type
+        main_data.append(metadata['limit_type'])                                         # limit_type
+        return tuple(main_data)
 
     def update_main(self, metadata):
         sql = 'INSERT INTO MAIN \
         (start_time, duration, start_price, end_price, ratio, sell_reason, income, fee, pair,\
          algorithm, stake_amount, order_type, limit_type) \
          values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        data = [
-            (metadata['start_time'], self.get_duration(metadata)), metadata['start_price'], metadata['end_price'],
-            metadata
-        ]
+        data = [self.get_main_data(metadata)]
+        with self.db:
+            self.db.executemany(sql, data)
 
     def update_pair(self):
         pass

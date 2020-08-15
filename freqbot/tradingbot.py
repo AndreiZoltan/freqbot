@@ -20,6 +20,12 @@ class OrderMetadata:
         self.end_time = None
         self.sell_cause = None
         self.fee = None
+        self.order_type = None
+        self.limit_type = None
+        self.algorithm_name = None
+
+    def set_algorithm_name(self, algorithm: BasicAlgorithm):
+        self.algorithm_name = type(algorithm).__name__
 
     def set_time(self, action: str):
         if action == 'BUY' and not self.start_time:
@@ -78,6 +84,13 @@ class OrderMetadata:
         :param order: order from websocket
         :return:
         """
+        if order['S'] == 'BUY':
+            self.set_time('BUY')  # why set time is here?
+            self.order_type = order['o']
+            if self.order_type == 'LIMIT':
+                self.limit_type = order['f']
+        elif order['S'] == 'SELL' and order['X'] == 'FILLED':
+            self.set_time('SELL')
         if order['x'] == 'TRADE':  # Part of the order or all of the order's quantity has filled
             assert order['N'] == 'USDT'
             self.fee += float(order['n'])
@@ -91,6 +104,8 @@ class OrderMetadata:
         self.end_time = None
         self.sell_cause = None
         self.fee = None
+        self.order_type = None
+        self.limit_type = None
 
 
 class TradingBot:
@@ -141,6 +156,7 @@ class TradingBot:
         self.roi = {float(key): value for key, value in self.algorithm.roi.items()}
         self.stoploss = self.algorithm.stoploss
         self.create_request(pair)
+        self.meta.set_algorithm_name(self.algorithm)
 
     def roi_stoploss_check(self):
         diff = time.perf_counter() - self.meta.start_time
@@ -220,10 +236,8 @@ class TradingBot:
         if message['e'] == 'executionReport':
             self.meta.add_socket_order(message)
             if message['S'] == 'BUY':
-                self.meta.set_time('BUY')  # why set time is here?
                 self.is_trading = True
             elif message['S'] == 'SELL' and message['X'] == 'FILLED':
-                self.meta.set_time('SELL')
                 self.data_handler.update(self.meta)
                 self.meta.flush()
                 self.is_trading = False
