@@ -9,8 +9,8 @@ class BasicAlgorithm:
         self.order_type = order_type
         self.price = 0
         self.data = pd.DataFrame()
-        self.roi = dict()
-        self.stoploss = None
+        self.roi = {"100": 0.02}
+        self.stoploss = -2
 
     def set_state(self, state):
         self.data = self.data.append(state, ignore_index=True)

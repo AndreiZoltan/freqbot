@@ -1,13 +1,16 @@
-from freqbot.database import DataHandler
-from freqbot.algos import BasicAlgorithm
-from binance.websockets import BinanceSocketManager
-from binance.client import Client
-from freqml import *
 import freqml as fm
 import pandas as pd
 import numpy as np
 import time
 import os
+from typing import NoReturn
+from binance.websockets import BinanceSocketManager
+from binance.client import Client
+from freqml import *
+
+from freqbot.database import DataHandler
+from freqbot.algos import BasicAlgorithm
+from freqbot.tools import time2stamp
 
 
 class OrderMetadata:
@@ -25,33 +28,33 @@ class OrderMetadata:
         self.limit_type = None
         self.algorithm_name = None
 
-    def set_algorithm_name(self, algorithm: BasicAlgorithm):
+    def set_algorithm_name(self, algorithm: BasicAlgorithm) -> NoReturn:
         self.algorithm_name = type(algorithm).__name__
 
-    def set_time(self, action: str):
+    def set_time(self, action: str) -> NoReturn:
         if action == 'BUY' and not self.start_time:
             self.start_time = time.perf_counter()
             self.ctime = time.ctime()
         else:
             self.end_time = time.perf_counter()
 
-    def set_start_price(self, start_price: float):
+    def set_start_price(self, start_price: float) -> NoReturn:
         self.start_price = start_price
 
-    def set_end_price(self, end_price):
+    def set_end_price(self, end_price) -> NoReturn:
         self.end_price = end_price
 
-    def set_quantity(self, quantity):
-        self.quantity = quantity
+    def set_quantity(self, quantity) -> NoReturn:
+        self.quantity = float(quantity)
 
-    def get_quantity(self):
+    def get_quantity(self) -> float:
         return self.quantity
 
-    def set_sell_reason(self, sell_cause: str):
+    def set_sell_reason(self, sell_cause: str) -> NoReturn:
         self.sell_reason = sell_cause
 
     @staticmethod
-    def get_price(order: dict):
+    def get_price(order: dict) -> float:
         cost = 0
         quantity = 0
         for fill in order['fills']:
@@ -60,14 +63,14 @@ class OrderMetadata:
         return cost / quantity
 
     @staticmethod
-    def get_fee(order: dict):
+    def get_fee(order: dict) -> float:
         fee = 0
         for fill in order['fills']:
             assert fill['commissionAsset'] == 'USDT'
             fee += float(fill['commission'])
         return fee
 
-    def add_order(self, order: dict):
+    def add_order(self, order: dict) -> NoReturn:
         """
         :param order: order from create_order
         :return:
@@ -81,7 +84,7 @@ class OrderMetadata:
                 self.end_price = self.get_price(order)
                 # self.fee += self.get_fee(order)
 
-    def add_socket_order(self, order: dict):
+    def add_socket_order(self, order: dict) -> NoReturn:
         """
         :param order: order from websocket
         """
@@ -93,8 +96,8 @@ class OrderMetadata:
         elif order['S'] == 'SELL' and order['X'] == 'FILLED':
             self.set_time('SELL')
         if order['x'] == 'TRADE':  # Part of the order or all of the order's quantity has filled
-            assert order['N'] == 'USDT'
-            self.fee += float(order['n'])
+            # assert order['N'] == 'USDT'
+            self.fee = self.fee + float(order['n']) if self.fee else float(order['n'])
 
     def flush(self):
         self.quantity = None
@@ -113,7 +116,6 @@ class OrderMetadata:
 class TradingBot:
     def __init__(self, key: str, secret: str, algorithm: BasicAlgorithm):
         self.client = Client(key, secret)
-        self.bm = BinanceSocketManager(self.client)
         self.algorithm = algorithm
         self.data = pd.DataFrame()
         self.request = dict()
@@ -130,9 +132,9 @@ class TradingBot:
         self.stoploss = None
 
         # some helpers
-        self.data_handler = None
+        self.data_handler: DataHandler
 
-    def create_request(self, pair: str):
+    def create_request(self, pair: str) -> NoReturn:
         self.request['symbol'] = pair
         self.request['type'] = self.algorithm.order_type
         self.request['newOrderRespType'] = 'FULL'
@@ -141,7 +143,7 @@ class TradingBot:
             self.request['timeInForce'] = 'GTC'
 
     def set_metadata(self, pair: str, stake_amount: int):
-        def get_precision(string: str):
+        def get_precision(string: str) -> int:
             precision = 0
             for char in string:
                 if char == '1':
@@ -156,14 +158,20 @@ class TradingBot:
         tick_size = info['filters'][0]['tickSize']
         self.price_precision = get_precision(tick_size)
         self.roi = {float(key): value for key, value in self.algorithm.roi.items()}
+        self.roi[np.inf] = 0
         self.stoploss = self.algorithm.stoploss
         self.create_request(pair)
         self.meta.set_algorithm_name(self.algorithm)
 
+    def data_drop(self, state) -> NoReturn:
+        print("BEFORE DROP ", self.data.shape)
+        self.data = self.data.drop(self.data.loc[self.data["timestamp"] <= time2stamp(state.index[-1])].index)
+        print("AFTER DROP ", self.data.shape)
+
     def roi_stoploss_check(self) -> bool:
         diff = time.perf_counter() - self.meta.start_time
         keys = np.array(list(self.roi.keys()))
-        key = np.min(keys[keys - diff > 0])
+        key = np.min(keys[keys * 60 - diff > 0])
         profit_price = self.meta.start_price * (1 + self.roi[key])
         if self.price > profit_price:
             self.meta.set_sell_reason('ROI')
@@ -191,19 +199,19 @@ class TradingBot:
         del message["M"]
         return message
 
-    def update(self, message):
+    def update(self, message, act: bool) -> NoReturn:
         self.data = self.data.append(message, ignore_index=True)
         state = getattr(self.data.bars, self.algorithm.tick_type)(self.algorithm.tick_size)
         if not state.empty:
             self.algorithm.set_state(state)
             action = self.algorithm.action(self.is_trading)
-            if action:
+            if act and action:
                 if action == 'SELL':
                     self.meta.set_sell_reason('SELL SIGNAL')
                 self.act(action, self.algorithm.order_type)
-            self.data = self.data.drop(self.data.loc[self.data["datetime"] <= state.index[-1]].index)
+            self.data_drop(state)
 
-    def get_historical_data(self, pair: str, days: int, override: bool):
+    def get_historical_data(self, pair: str, days: int, override: bool) -> NoReturn:
         path = os.path.abspath(__file__)
         path = "/".join(path.split('/')[:-2]) + '/historical_data/'
         self.data = fm.load_dataset(client=self.client,
@@ -217,7 +225,7 @@ class TradingBot:
         self.algorithm.set_state(state)
 
         last_id = self.data.iloc[-1, 0]
-        self.data = self.data.drop(self.data.loc[self.data["datetime"] <= state.index[-1]].index)
+        self.data_drop(state)
 
         # cycle below is just to minimize lag that occurs because of loading dataset
         for i in range(5):
@@ -226,19 +234,21 @@ class TradingBot:
             agg_trades = self.client.aggregate_trade_iter(symbol=pair, last_id=last_id)
             agg_trades = list(agg_trades)
             messages = [self.process_message(message) for message in agg_trades]
-            self.update(messages)
+            self.update(messages, False)
 
-    def handle_order(self, message):
+    def handle_order(self, message) -> NoReturn:
         if message['e'] == 'executionReport':
+            print(message)
             self.meta.add_socket_order(message)
             if message['S'] == 'BUY':
                 self.is_trading = True
             elif message['S'] == 'SELL' and message['X'] == 'FILLED':
+                print(vars(self.meta))
                 self.data_handler.update(vars(self.meta))
                 self.meta.flush()
                 self.is_trading = False
 
-    def handle_message(self, message):
+    def handle_message(self, message) -> NoReturn:
         message = self.process_message(message)
         self.price = float(message["price"])
 
@@ -247,9 +257,9 @@ class TradingBot:
             if self.roi_stoploss_check():
                 self.act('SELL', 'MARKET')
 
-        self.update(message)
+        self.update(message, True)
 
-    def make_limit_request(self, action: str):
+    def make_limit_request(self, action: str) -> NoReturn:
         self.request['side'] = action
 
         # may be better to use self.price + n * tick_size instead of self.algorithm.price
@@ -262,13 +272,13 @@ class TradingBot:
         else:
             self.meta.set_end_price(float(self.request['price']))
 
-    def make_market_request(self, action: str):
+    def make_market_request(self, action: str) -> NoReturn:
         self.request['side'] = action
         if action == 'BUY':
             self.meta.set_quantity("{:0.0{}f}".format(self.stake_amount / self.price, self.lot_precision))
             self.request['quantity'] = self.meta.get_quantity()
 
-    def act(self, action: str, type_order: str):
+    def act(self, action: str, type_order: str) -> NoReturn:
         assert type_order in ['MARKET', 'LIMIT']
         assert action in ['BUY', 'SELL']
         if type_order == 'MARKET':
@@ -278,7 +288,7 @@ class TradingBot:
         self.order = self.client.create_order(** self.request)
         self.meta.add_order(self.order)
 
-    def trade(self, pair: str, days: int, override: bool = True, stake_amount: int = 10):
+    def trade(self, pair: str, days: int, override: bool = True, stake_amount: int = 10) -> NoReturn:
         """
         This function is used for trading
         :param pair: pair to trade on
@@ -290,9 +300,14 @@ class TradingBot:
         self.set_metadata(pair, stake_amount)
         self.data_handler = DataHandler('trade')
         self.get_historical_data(pair, days, override)
-        self.bm.start_user_socket(self.handle_order)
-        conn_key = self.bm.start_aggtrade_socket(pair, self.handle_message)
-        self.bm.start()
+
+        bm_user = BinanceSocketManager(self.client)
+        bm_user.start_user_socket(self.handle_order)
+        bm_user.start()
+
+        bm_trades = BinanceSocketManager(self.client)
+        conn_key = bm_trades.start_aggtrade_socket(pair, self.handle_message)
+        bm_trades.start()
 
     def backtest(self):
         pass
