@@ -96,7 +96,7 @@ class DataHandler:
 
     def get_main_data(self, metadata: dict) -> tuple:
         main_data = list()
-        main_data.append(metadata['start_time'])                                         # start_time
+        main_data.append(metadata['ctime'])                                              # start_time
         main_data.append(r(self.get_duration(metadata)))                                 # duration
         main_data.append(metadata['start_price'])                                        # start_price
         main_data.append(metadata['end_price'])                                          # end_price

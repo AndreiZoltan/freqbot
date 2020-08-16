@@ -16,6 +16,7 @@ class OrderMetadata:
         self.start_price = None
         self.end_price = None
         self.pair = None
+        self.ctime = None
         self.start_time = None
         self.end_time = None
         self.sell_reason = None
@@ -30,6 +31,7 @@ class OrderMetadata:
     def set_time(self, action: str):
         if action == 'BUY' and not self.start_time:
             self.start_time = time.perf_counter()
+            self.ctime = time.ctime()
         else:
             self.end_time = time.perf_counter()
 
@@ -99,6 +101,7 @@ class OrderMetadata:
         self.start_price = None
         self.end_price = None
         self.pair = None
+        self.ctime = None
         self.start_time = None
         self.end_time = None
         self.sell_reason = None
