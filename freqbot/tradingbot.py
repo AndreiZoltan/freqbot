@@ -45,7 +45,7 @@ class OrderMetadata:
     def get_quantity(self):
         return self.quantity
 
-    def set_sell_cause(self, sell_cause: str):
+    def set_sell_reason(self, sell_cause: str):
         self.sell_reason = sell_cause
 
     @staticmethod
@@ -82,7 +82,6 @@ class OrderMetadata:
     def add_socket_order(self, order: dict):
         """
         :param order: order from websocket
-        :return:
         """
         if order['S'] == 'BUY':
             self.set_time('BUY')  # why set time is here?
@@ -158,30 +157,25 @@ class TradingBot:
         self.create_request(pair)
         self.meta.set_algorithm_name(self.algorithm)
 
-    def roi_stoploss_check(self):
+    def roi_stoploss_check(self) -> bool:
         diff = time.perf_counter() - self.meta.start_time
         keys = np.array(list(self.roi.keys()))
         key = np.min(keys[keys - diff > 0])
         profit_price = self.meta.start_price * (1 + self.roi[key])
         if self.price > profit_price:
-            self.meta.set_time('SELL')
-            self.meta.set_sell_cause('ROI')
+            self.meta.set_sell_reason('ROI')
             return True
         if self.price < self.meta.start_price * (1 + self.stoploss):
-            self.meta.set_time('SELL')
-            self.meta.set_sell_cause('STOPLOSS')
+            self.meta.set_sell_reason('STOPLOSS')
             return True
         return False
 
     @staticmethod
-    def process_message(message):
+    def process_message(message) -> dict:
         message["price"] = message.pop("p")
         message["id"] = message.pop("a")
         message["amount"] = message.pop("q")
         message["timestamp"] = message.pop("T")
-        message["datetime"] = pd.to_datetime(message["timestamp"],  # IS IT A JOKE OR WHAT ???
-                                             unit='ms',
-                                             utc=True).tz_convert('Europe/Chisinau')
         message["price"] = pd.to_numeric(message["price"])
         message["amount"] = pd.to_numeric(message["amount"])
         message["cost"] = message["price"] * message["amount"]
@@ -202,7 +196,7 @@ class TradingBot:
             action = self.algorithm.action(self.is_trading)
             if action:
                 if action == 'SELL':
-                    self.meta.set_sell_cause('SELL SIGNAL')
+                    self.meta.set_sell_reason('SELL SIGNAL')
                 self.act(action, self.algorithm.order_type)
             self.data = self.data.drop(self.data.loc[self.data["datetime"] <= state.index[-1]].index)
 
@@ -213,8 +207,7 @@ class TradingBot:
                                     pair=pair,
                                     days=days,
                                     path=path,
-                                    override=override,
-                                    use_swifter=False)
+                                    override=override)
 
         state = getattr(self.data.bars, self.algorithm.tick_type)(self.algorithm.tick_size)
 
@@ -260,11 +253,11 @@ class TradingBot:
         # or IOC with self.price - n * tick_size
         self.request['price'] = "{:0.0{}f}".format(self.algorithm.price, self.price_precision)
         if action == 'BUY':
-            self.meta.set_start_price(self.algorithm.price)
+            self.meta.set_start_price(float(self.request['price']))
             self.meta.set_quantity("{:0.0{}f}".format(self.stake_amount / self.algorithm.price, self.lot_precision))
             self.request['quantity'] = self.meta.get_quantity()
         else:
-            self.meta.set_end_price(self.algorithm.price)
+            self.meta.set_end_price(float(self.request['price']))
 
     def make_market_request(self, action: str):
         self.request['side'] = action
