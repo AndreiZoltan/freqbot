@@ -45,7 +45,7 @@ class Quickie(BasicAlgorithm):
             ),
             'buy'] = 1
         buy = dataframe.iloc[-1, dataframe.columns.get_loc("buy")]
-        return True if buy else False
+        return True if buy == 1 else False
 
     def sell_trend(self, dataframe: DataFrame) -> bool:
         dataframe.loc[
@@ -56,4 +56,4 @@ class Quickie(BasicAlgorithm):
             ),
             'sell'] = 1
         sell = dataframe.iloc[-1, dataframe.columns.get_loc("sell")]
-        return True if sell else False
+        return True if sell == 1 else False

@@ -14,17 +14,15 @@ class BasicAlgorithm:
 
     def set_state(self, state):
         self.data = self.data.append(state, ignore_index=True)
-        print("IT IS DATA SHAPE ", self.data.shape)
-        print("IT IS APPENDED SHAPE ", state.shape)
 
     def update_indicators(self, dataframe: DataFrame) -> DataFrame:
-        pass
+        raise NotImplemented
 
     def buy_trend(self, dataframe: DataFrame) -> bool:
-        pass
+        raise NotImplemented
 
     def sell_trend(self, dataframe: DataFrame) -> bool:
-        pass
+        raise NotImplemented
 
     def action(self, is_trading: bool):
         self.update_indicators(self.data)
