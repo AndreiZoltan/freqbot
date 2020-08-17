@@ -19,7 +19,7 @@ class DataHandler:
     def connect(filename: str) -> sqlite3.Connection:
         path = os.path.abspath(__file__)
         path = "/".join(path.split('/')[:-2]) + '/databases/'
-        return sqlite3.connect(path + filename + '.db')
+        return sqlite3.connect(path + filename + '.db', check_same_thread=False)
 
     def create_tables(self) -> NoReturn:
         with self.connection:
@@ -98,12 +98,12 @@ class DataHandler:
         main_data = list()
         main_data.append(metadata['ctime'])                                              # start_time
         main_data.append(r(self.get_duration(metadata)))                                 # duration
-        main_data.append(metadata['start_price'])                                        # start_price
-        main_data.append(metadata['end_price'])                                          # end_price
+        main_data.append(r(metadata['start_price']))                                     # start_price
+        main_data.append(r(metadata['end_price']))                                       # end_price
         main_data.append(r(metadata['end_price'] / metadata['start_price']))             # ratio
         main_data.append(metadata['sell_reason'])                                        # sell_reason
-        main_data.append(self.get_income(metadata))                                      # income
-        main_data.append(metadata['fee'])                                                # fee
+        main_data.append(r(self.get_income(metadata), 6))                                # income
+        main_data.append(r(metadata['fee'], 6))                                          # fee
         main_data.append(metadata['pair'])                                               # pair
         main_data.append(metadata['algorithm_name'])                                     # algorithm
         main_data.append(r(metadata['start_price'] * metadata['quantity']))              # stake_amount
@@ -132,11 +132,11 @@ class DataHandler:
             ratio_n = r(num_profit / (num_loss + num_profit))
             new_data.append(ratio_n)                                                        # ratio_n
             loss = maximum(-income, 0)
-            new_data.append(loss)                                                           # loss
+            new_data.append(r(loss, 6))                                                     # loss
             profit = maximum(income, 0)
-            new_data.append(r(profit))                                                      # profit
-            ratio = r(profit / (loss + profit))
-            new_data.append(ratio)                                                          # ratio
+            new_data.append(r(profit, 6))                                                   # profit
+            ratio = profit / (loss + profit)
+            new_data.append(r(ratio))                                                       # ratio
             new_data.append(r(profit - loss))                                               # total
             new_data.append(r(self.get_duration(metadata)))                                 # av_duration
         else:
@@ -147,15 +147,15 @@ class DataHandler:
             new_data.append(num_profit)                                                     # num_profit
             num_total = num_loss + num_profit
             new_data.append(num_total)                                                      # num_total
-            ratio_n = r(num_profit / (num_loss + num_profit))
-            new_data.append(ratio_n)                                                        # ratio_n
+            ratio_n = num_profit / (num_loss + num_profit)
+            new_data.append(r(ratio_n))                                                     # ratio_n
             loss = old_data['loss'] + maximum(-income, 0)
-            new_data.append(loss)                                                           # loss
+            new_data.append(r(loss))                                                        # loss
             profit = old_data['profit'] + maximum(income, 0)
-            new_data.append(profit)                                                         # profit
-            ratio = r(profit / (loss + profit))
-            new_data.append(ratio)                                                          # ratio
-            new_data.append(profit - loss)                                                  # total
+            new_data.append(r(profit))                                                      # profit
+            ratio = profit / (loss + profit)
+            new_data.append(r(ratio))                                                       # ratio
+            new_data.append(r(profit - loss))                                               # total
             av_duration = self.get_av_duration(old_data, metadata, num_total)
             new_data.append(r(av_duration))                                                 # av_duration
         return tuple(new_data)

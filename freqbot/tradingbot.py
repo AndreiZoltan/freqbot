@@ -28,8 +28,15 @@ class OrderMetadata:
         self.limit_type = None
         self.algorithm_name = None
 
+        # to translate BNB fee to USDT value
+        self.bnb_price = None
+
     def set_algorithm_name(self, algorithm: BasicAlgorithm) -> NoReturn:
         self.algorithm_name = type(algorithm).__name__
+
+    def set_bnb_price(self, client: Client) -> NoReturn:
+        avg_price = client.get_avg_price(symbol='BNBUSDT')
+        self.bnb_price = float(avg_price['price'])
 
     def set_time(self, action: str) -> NoReturn:
         if action == 'BUY' and not self.start_time:
@@ -96,8 +103,8 @@ class OrderMetadata:
         elif order['S'] == 'SELL' and order['X'] == 'FILLED':
             self.set_time('SELL')
         if order['x'] == 'TRADE':  # Part of the order or all of the order's quantity has filled
-            # assert order['N'] == 'USDT'
-            self.fee = self.fee + float(order['n']) if self.fee else float(order['n'])
+            assert order['N'] == 'BNB'
+            self.fee = self.fee + float(order['n']) * self.bnb_price if self.fee else float(order['n']) * self.bnb_price
 
     def flush(self):
         self.quantity = None
@@ -138,7 +145,7 @@ class TradingBot:
         self.request['symbol'] = pair
         self.request['type'] = self.algorithm.order_type
         self.request['newOrderRespType'] = 'FULL'
-        self.request['recvWindow'] = 250  # why not?
+        self.request['recvWindow'] = 400  # why not?
         if self.algorithm.order_type == 'LIMIT':  # for LIMIT type
             self.request['timeInForce'] = 'GTC'
 
@@ -161,6 +168,7 @@ class TradingBot:
         self.roi[np.inf] = 0
         self.stoploss = self.algorithm.stoploss
         self.create_request(pair)
+        self.meta.set_bnb_price(self.client)
         self.meta.set_algorithm_name(self.algorithm)
 
     def data_drop(self, state) -> NoReturn:
@@ -246,6 +254,7 @@ class TradingBot:
                 print(vars(self.meta))
                 self.data_handler.update(vars(self.meta))
                 self.meta.flush()
+                self.meta.set_bnb_price(self.client)
                 self.is_trading = False
 
     def handle_message(self, message) -> NoReturn:
