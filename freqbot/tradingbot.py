@@ -3,14 +3,18 @@ import pandas as pd
 import numpy as np
 import time
 import os
+import sys
 from typing import NoReturn
+from freqml import *
+
 from binance.websockets import BinanceSocketManager
 from binance.client import Client
-from freqml import *
+from binance.exceptions import BinanceAPIException
 
 from freqbot.database import DataHandler
 from freqbot.algos import BasicAlgorithm
 from freqbot.tools import time2stamp
+from freqbot.logging import get_logger
 
 
 class OrderMetadata:
@@ -140,6 +144,7 @@ class TradingBot:
 
         # some helpers
         self.data_handler: DataHandler
+        self.logger = None
 
     def create_request(self, pair: str) -> NoReturn:
         self.request['symbol'] = pair
@@ -172,9 +177,7 @@ class TradingBot:
         self.meta.set_algorithm_name(self.algorithm)
 
     def data_drop(self, state) -> NoReturn:
-        print("BEFORE DROP ", self.data.shape)
         self.data = self.data.drop(self.data.loc[self.data["timestamp"] <= time2stamp(state.index[-1])].index)
-        print("AFTER DROP ", self.data.shape)
 
     def roi_stoploss_check(self) -> bool:
         diff = time.perf_counter() - self.meta.start_time
@@ -183,9 +186,11 @@ class TradingBot:
         profit_price = self.meta.start_price * (1 + self.roi[key])
         if self.price > profit_price:
             self.meta.set_sell_reason('ROI')
+            self.logger.info('ROI WAS REACHED')
             return True
         if self.price < self.meta.start_price * (1 + self.stoploss):
             self.meta.set_sell_reason('STOPLOSS')
+            self.logger.info('STOPLOSS WAS REACHED')
             return True
         return False
 
@@ -212,6 +217,7 @@ class TradingBot:
         state = getattr(self.data.bars, self.algorithm.tick_type)(self.algorithm.tick_size)
         if not state.empty:
             self.algorithm.set_state(state)
+            self.logger.info('STATE IS UPDATED')
             action = self.algorithm.action(self.is_trading)
             if act and action:
                 if action == 'SELL':
@@ -246,16 +252,19 @@ class TradingBot:
 
     def handle_order(self, message) -> NoReturn:
         if message['e'] == 'executionReport':
-            print(message)
             self.meta.add_socket_order(message)
             if message['S'] == 'BUY':
                 self.is_trading = True
             elif message['S'] == 'SELL' and message['X'] == 'FILLED':
-                print(vars(self.meta))
                 self.data_handler.update(vars(self.meta))
+                self.logger.info('DATABASE WAS UPDATED')
+                self.logger.debug(vars(self.meta))
                 self.meta.flush()
                 self.meta.set_bnb_price(self.client)
                 self.is_trading = False
+        elif message['e'] == 'error':
+            self.logger.error('HANDLE ORDER ERROR ' + message['m'])
+            sys.exit()
 
     def handle_message(self, message) -> NoReturn:
         message = self.process_message(message)
@@ -294,7 +303,14 @@ class TradingBot:
             self.make_market_request(action)
         else:
             self.make_limit_request(action)
-        self.order = self.client.create_order(** self.request)
+        try:
+            self.logger.info(action + ' ' + type_order + ' ORDER WAS SENT')
+            self.logger.debug(self.request)
+            self.order = self.client.create_order(** self.request)
+            self.logger.debug(self.order)
+        except BinanceAPIException as e:
+            self.logger.error(e)
+            sys.exit()
         self.meta.add_order(self.order)
 
     def trade(self, pair: str, days: int, override: bool = True, stake_amount: int = 10) -> NoReturn:
@@ -306,9 +322,11 @@ class TradingBot:
         :param stake_amount: amount of one stake
         :return: trade function has no return but it saves logs
         """
+        self.logger = get_logger('trade')
         self.set_metadata(pair, stake_amount)
         self.data_handler = DataHandler('trade')
         self.get_historical_data(pair, days, override)
+        self.logger.info(pair + ' historical data for ' + str(days) + ' days was downloaded and processed')
 
         bm_user = BinanceSocketManager(self.client)
         bm_user.start_user_socket(self.handle_order)

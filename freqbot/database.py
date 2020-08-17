@@ -5,7 +5,6 @@ from typing import Union, NoReturn
 import time
 
 from freqbot.tools import r
-import freqbot as fb
 
 
 class DataHandler:
@@ -121,9 +120,7 @@ class DataHandler:
             old_data = self.get_pair_algo_line(metadata['pair'], table)                     # index
             new_data.append(metadata['pair'])
         income = self.get_income(metadata)
-        print(old_data)
         if not old_data:
-            print('WRONG WAY')
             num_loss = heaviside(-income, 0)
             new_data.append(num_loss)                                                       # num_loss
             num_profit = heaviside(income, 1)
@@ -140,7 +137,6 @@ class DataHandler:
             new_data.append(r(profit - loss))                                               # total
             new_data.append(r(self.get_duration(metadata)))                                 # av_duration
         else:
-            print(old_data['num_loss'], heaviside(-income, 0))
             num_loss = old_data['num_loss'] + heaviside(-income, 0)
             new_data.append(num_loss)                                                       # num_loss
             num_profit = old_data['num_profit'] + heaviside(income, 1)
@@ -205,6 +201,7 @@ class DataHandler:
             self.connection.execute("""
             DROP TABLE IF EXISTS ALGO""")
 
+
 if __name__ == '__main__':
     dh = DataHandler('trade')
     # dh.drop_table()
@@ -214,7 +211,6 @@ if __name__ == '__main__':
              'pair': "LOLKUK", 'start_time': 1234, 'end_time': 2100,
              'sell_reason': 'SELL SIGNAL', 'fee': 0.1, 'order_type': "MARKET",
              'limit_type': None, 'algorithm_name': "MUMBA_v4"}
-    # print(vars(order))
 
     print('START')
     print(time.ctime())
