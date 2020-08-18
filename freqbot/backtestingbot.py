@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import freqml as fm
+import concurrent.futures
 from typing import Union, List, Dict, NoReturn
 from freqml import *
 
@@ -112,12 +113,13 @@ class BacktestingBot(TradingBot):
         meta.start_time = 0
         return meta
 
-    def backtest_algo_pair(self, algo: BasicAlgorithm, pair: pd.DataFrame, stake_amount: int = 10):
+    def backtest_algo_pair(self, algo: BasicAlgorithm, pair: pd.DataFrame, stake_amount: int, name: str) -> NoReturn:
         is_trading = False
+        data_handler = DataHandler('backtest')
         meta = OrderMetadata()
         meta.order_type = 'MARKET'
         meta.set_algorithm_name(algo)
-        meta.pair = pair.name
+        meta.pair = name
         for state in self.df_gen(pair):
             assert state.shape[0] == 1
 
@@ -125,9 +127,9 @@ class BacktestingBot(TradingBot):
                 end_price = self.roi_stoploss_backtest_check(meta, state, algo.roi, algo.stoploss)
                 if end_price:
                     meta = self.sell_handling(meta, state, end_price)
-                    self.data_handler.update(vars(meta))
+                    data_handler.update(vars(meta))
                     meta.flush()
-                    meta.pair = pair.name
+                    meta.pair = name
                     meta.order_type = 'MARKET'
                     is_trading = False
 
@@ -142,11 +144,13 @@ class BacktestingBot(TradingBot):
                 else:
                     meta.set_sell_reason('SELL SIGNAL')
                     meta = self.sell_handling(meta, state)
-                    self.data_handler.update(vars(meta))
+                    data_handler.update(vars(meta))
                     meta.flush()
-                    meta.pair = pair.name
+                    meta.pair = name
                     meta.order_type = 'MARKET'
                     is_trading = False
+
+        self.logger.info(self.algo_name(algo) + ' WAS TESTED ON ' + name)
 
     def backtest(self, pairs: List[str], algorithms: List[BasicAlgorithm], days: int = 3,
                  override: bool = True, stake_amount: int = 10):
@@ -157,8 +161,11 @@ class BacktestingBot(TradingBot):
         self.get_historical_data(pairs, days, override)
         self.logger.info('ALL DATA WAS DOWNLOADED AND PROCESSED TO NEEDED FORMAT')
 
-        for tick_type in self.tick_pair_frames.keys():
-            for pair in self.tick_pair_frames[tick_type]:
+        # sqlite3.Connection is not pickable
+        del self.data_handler
+
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            for tick_type in self.tick_pair_frames.keys():
                 for algo in self.tick2algo[tick_type]:
-                    self.backtest_algo_pair(algo, pair)
-                    self.logger.info(self.algo_name(algo) + ' WAS TESTED ON ' + pair.name)
+                    for pair in self.tick_pair_frames[tick_type]:
+                        executor.submit(self.backtest_algo_pair, algo, pair, stake_amount, pair.name)
