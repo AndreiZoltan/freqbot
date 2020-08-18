@@ -167,5 +167,12 @@ class BacktestingBot(TradingBot):
         with concurrent.futures.ProcessPoolExecutor() as executor:
             for tick_type in self.tick_pair_frames.keys():
                 for algo in self.tick2algo[tick_type]:
+                    futures = list()
                     for pair in self.tick_pair_frames[tick_type]:
-                        executor.submit(self.backtest_algo_pair, algo, pair, stake_amount, pair.name)
+                        futures.append(executor.submit(self.backtest_algo_pair, algo, pair, stake_amount, pair.name))
+
+                    for future in futures:
+                        try:
+                            future.result()
+                        except Exception as e:
+                            print(e)
