@@ -128,6 +128,7 @@ class BacktestingBot(TradingBot):
                     self.data_handler.update(vars(meta))
                     meta.flush()
                     meta.pair = pair.name
+                    meta.order_type = 'MARKET'
                     is_trading = False
 
             algo.set_state(state)
@@ -144,6 +145,7 @@ class BacktestingBot(TradingBot):
                     self.data_handler.update(vars(meta))
                     meta.flush()
                     meta.pair = pair.name
+                    meta.order_type = 'MARKET'
                     is_trading = False
 
     def backtest(self, pairs: List[str], algorithms: List[BasicAlgorithm], days: int = 3,
