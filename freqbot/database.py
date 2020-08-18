@@ -201,6 +201,8 @@ class DataHandler:
             self.connection.execute("""
             DROP TABLE IF EXISTS ALGO""")
 
+        self.create_tables()
+
 
 if __name__ == '__main__':
     dh = DataHandler('trade')

@@ -7,7 +7,7 @@ import freqtrade.vendor.qtpylib.indicators as qtpylib
 
 class Quickie(BasicAlgorithm):
     def __init__(self, tick_type: str, tick_size, order_type: str = 'MARKET'):
-        super(Quickie, self).__init__(tick_type, tick_size, order_type)
+        super().__init__(tick_type, tick_size, order_type)
         self.roi = {
             "100": 0.01,
             "30": 0.03,
