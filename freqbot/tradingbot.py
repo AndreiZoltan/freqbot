@@ -4,7 +4,7 @@ import numpy as np
 import time
 import os
 import sys
-from typing import NoReturn
+from typing import NoReturn, Union
 from freqml import *
 
 from binance.websockets import BinanceSocketManager
@@ -125,9 +125,9 @@ class OrderMetadata:
 
 
 class TradingBot:
-    def __init__(self, key: str, secret: str, algorithm: BasicAlgorithm):
+    def __init__(self, key: str, secret: str):
         self.client = Client(key, secret)
-        self.algorithm = algorithm
+        self.algorithm: Union[BasicAlgorithm, None] = None
         self.data = pd.DataFrame()
         self.request = dict()
         self.order = None
@@ -143,18 +143,18 @@ class TradingBot:
         self.stoploss = None
 
         # some helpers
-        self.data_handler: DataHandler
+        self.data_handler: Union[DataHandler, None] = None
         self.logger = None
 
     def create_request(self, pair: str) -> NoReturn:
         self.request['symbol'] = pair
         self.request['type'] = self.algorithm.order_type
         self.request['newOrderRespType'] = 'FULL'
-        self.request['recvWindow'] = 400  # why not?
+        self.request['recvWindow'] = 1000  # why not?
         if self.algorithm.order_type == 'LIMIT':  # for LIMIT type
             self.request['timeInForce'] = 'GTC'
 
-    def set_metadata(self, pair: str, stake_amount: int):
+    def set_metadata(self, pair: str, stake_amount: int, algorithm: BasicAlgorithm):
         def get_precision(string: str) -> int:
             precision = 0
             for char in string:
@@ -163,6 +163,7 @@ class TradingBot:
                 precision += 1 if char == '0' else 0
             return precision
 
+        self.algorithm = algorithm
         self.stake_amount = stake_amount
         info = self.client.get_symbol_info(pair)
         step_size = info['filters'][2]['stepSize']
@@ -313,17 +314,19 @@ class TradingBot:
             sys.exit()
         self.meta.add_order(self.order)
 
-    def trade(self, pair: str, days: int, override: bool = True, stake_amount: int = 10) -> NoReturn:
+    def trade(self, pair: str, days: int,  algorithm: BasicAlgorithm,
+              override: bool = True, stake_amount: int = 10) -> NoReturn:
         """
         This function is used for trading
         :param pair: pair to trade on
         :param days: number of days from which data is collected
+        :param algorithm: algorithm to trade on
         :param override: should data be override ?
         :param stake_amount: amount of one stake
         :return: trade function has no return but it saves logs
         """
         self.logger = get_logger('trade')
-        self.set_metadata(pair, stake_amount)
+        self.set_metadata(pair, stake_amount, algorithm)
         self.data_handler = DataHandler('trade')
         self.get_historical_data(pair, days, override)
         self.logger.info(pair + ' historical data for ' + str(days) + ' days was downloaded and processed')
@@ -335,9 +338,3 @@ class TradingBot:
         bm_trades = BinanceSocketManager(self.client)
         conn_key = bm_trades.start_aggtrade_socket(pair, self.handle_message)
         bm_trades.start()
-
-    def backtest(self):
-        pass
-
-    def dry_trade(self):
-        pass
