@@ -161,18 +161,18 @@ class BacktestingBot(TradingBot):
         self.get_historical_data(pairs, days, override)
         self.logger.info('ALL DATA WAS DOWNLOADED AND PROCESSED TO NEEDED FORMAT')
 
-        # sqlite3.Connection is not pickable
+        # sqlite3.Connection is not picklable
         del self.data_handler
 
+        futures = list()
         with concurrent.futures.ProcessPoolExecutor() as executor:
             for tick_type in self.tick_pair_frames.keys():
                 for algo in self.tick2algo[tick_type]:
-                    futures = list()
                     for pair in self.tick_pair_frames[tick_type]:
                         futures.append(executor.submit(self.backtest_algo_pair, algo, pair, stake_amount, pair.name))
 
-                    for future in futures:
-                        try:
-                            future.result()
-                        except Exception as e:
-                            print(e)
+            for future in futures:
+                try:
+                    future.result()
+                except Exception as e:
+                    print(e)
